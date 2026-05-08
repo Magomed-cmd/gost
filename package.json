@@ -1,0 +1,19 @@
+{
+  "name": "@codex/gost",
+  "version": "1.0.0",
+  "description": "GOST 7.32 document generation utilities for docx and xlsx",
+  "main": "dist/docx-gost.js",
+  "types": "dist/docx-gost.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "docx": "^9.6.1",
+    "exceljs": "^4.4.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}
