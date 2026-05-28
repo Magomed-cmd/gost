@@ -259,7 +259,7 @@ function imageBlockImpl(st, imagePath, width, height, opts = {}) {
         },
         keepNext: !!opts.keepNext,
         keepLines: opts.keepLines !== undefined ? opts.keepLines : true,
-        children: [new docx_1.ImageRun({ data, type: "png", transformation: { width, height } })],
+        children: [new docx_1.ImageRun({ data, type: opts.imageType ?? "png", transformation: { width, height } })],
     });
 }
 function codeLineImpl(st, text, opts = {}) {
@@ -487,7 +487,7 @@ function makeDocumentImpl(st, sections, opts = {}) {
     });
 }
 function saveDocumentImpl(doc, outputPath) {
-    return docx_1.Packer.toBuffer(doc).then((buffer) => { fs_1.default.writeFileSync(outputPath, buffer); });
+    return docx_1.Packer.toBuffer(doc).then((buffer) => fs_1.default.promises.writeFile(outputPath, buffer));
 }
 function createDocxGost(factoryOpts = {}) {
     const st = createDocxStyle(factoryOpts.style);

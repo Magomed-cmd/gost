@@ -1,10 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createExcelStyle = createExcelStyle;
-exports.productFormula = productFormula;
-exports.absoluteRef = absoluteRef;
-exports.weightedSumFormula = weightedSumFormula;
-exports.listFormulaRange = listFormulaRange;
 exports.createExcelGost = createExcelGost;
 function createExcelStyle(opts = {}) {
     return {
@@ -26,6 +22,30 @@ function createExcelStyle(opts = {}) {
         HEADER_TITLE_SIZE: opts.HEADER_TITLE_SIZE ?? 14,
         BORDER_STYLE: opts.BORDER_STYLE ?? "thin",
     };
+}
+function resolveExcelStyleAliases(opts) {
+    return {
+        ...opts,
+        FONT_SIZE: opts.FONT_SIZE ?? opts.fontSize,
+        FONT_NAME: opts.FONT_NAME ?? opts.fontName,
+        HEADER_FILL: opts.HEADER_FILL ?? opts.headerFill,
+        RESULT_FILL: opts.RESULT_FILL ?? opts.resultFill,
+        TAB_COLOR: opts.TAB_COLOR ?? opts.tabColor,
+    };
+}
+function colLetter(zeroBasedIndex) {
+    if (!Number.isInteger(zeroBasedIndex) || zeroBasedIndex < 0) {
+        throw new RangeError("Column index must be a non-negative integer");
+    }
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    let n = zeroBasedIndex + 1;
+    let result = "";
+    while (n > 0) {
+        const remainder = (n - 1) % 26;
+        result = alphabet[remainder] + result;
+        n = Math.floor((n - 1) / 26);
+    }
+    return result;
 }
 function styleCellImpl(cell, options = {}, st) {
     cell.font = {
@@ -85,9 +105,7 @@ function mergeTitleImpl(sheet, range, text, st) {
     styleCellImpl(cell, { bold: true, size: st.HEADER_TITLE_SIZE, align: "center" }, st);
 }
 function setFreezeImpl(sheet, ySplit, activeCell = "A2") {
-    void sheet;
-    void ySplit;
-    void activeCell;
+    sheet.views = [{ state: "frozen", ySplit, activeCell }];
 }
 function applyZebraStripingImpl(sheet, startRow, endRow, startCol, endCol, headerRows = new Set(), st) {
     for (let row = startRow; row <= endRow; row += 1) {
@@ -164,40 +182,54 @@ function weightedSumFormula(valueAddresses, weightAddresses) {
 function listFormulaRange(sheetName, addresses) {
     return addresses.map((address) => `'${sheetName}'!${address}`).join(",");
 }
+function validateAhpMatrixInput(labels, matrix) {
+    if (!Array.isArray(labels) || labels.length === 0) {
+        throw new RangeError("AHP labels must contain at least one item");
+    }
+    if (!Array.isArray(matrix) || matrix.length !== labels.length) {
+        throw new RangeError(`AHP matrix row count must match labels count (${labels.length})`);
+    }
+    matrix.forEach((row, index) => {
+        if (!Array.isArray(row) || row.length !== labels.length) {
+            throw new RangeError(`AHP matrix row ${index + 1} length must match labels count (${labels.length})`);
+        }
+    });
+}
 function addAhpMatrixBlockImpl(sheet, startRow, title, labels, matrix, randomIndex, st) {
+    validateAhpMatrixInput(labels, matrix);
     const labelStyle = { bold: true, border: true, fill: st.HEADER_FILL, align: "left" };
     setValueImpl(sheet, `A${startRow}`, title, { ...labelStyle, size: st.HEADER_TITLE_SIZE }, st);
     sheet.getRow(startRow).height = Math.max(sheet.getRow(startRow).height || st.DEFAULT_ROW_HEIGHT, 34);
     labels.forEach((label, idx) => {
-        setValueImpl(sheet, `${String.fromCharCode(66 + idx)}${startRow + 2}`, label, { bold: true, border: true, fill: st.HEADER_FILL }, st);
+        setValueImpl(sheet, `${colLetter(1 + idx)}${startRow + 2}`, label, { bold: true, border: true, fill: st.HEADER_FILL }, st);
         setValueImpl(sheet, `A${startRow + 3 + idx}`, label, { bold: true, border: true, fill: st.HEADER_FILL }, st);
     });
-    setValueImpl(sheet, `${String.fromCharCode(66 + labels.length)}${startRow + 2}`, "G_i", { bold: true, border: true, fill: st.HEADER_FILL }, st);
-    setValueImpl(sheet, `${String.fromCharCode(67 + labels.length)}${startRow + 2}`, "w_i", { bold: true, border: true, fill: st.HEADER_FILL }, st);
+    setValueImpl(sheet, `${colLetter(1 + labels.length)}${startRow + 2}`, "G_i", { bold: true, border: true, fill: st.HEADER_FILL }, st);
+    setValueImpl(sheet, `${colLetter(2 + labels.length)}${startRow + 2}`, "w_i", { bold: true, border: true, fill: st.HEADER_FILL }, st);
     for (let r = 0; r < labels.length; r += 1) {
         const row = startRow + 3 + r;
         const cells = [];
         for (let c = 0; c < labels.length; c += 1) {
-            const address = `${String.fromCharCode(66 + c)}${row}`;
+            const address = `${colLetter(1 + c)}${row}`;
             cells.push(address);
             setValueImpl(sheet, address, matrix[r][c], { border: true, numFmt: "0.0000" }, st);
         }
-        const gCol = String.fromCharCode(66 + labels.length);
-        const wCol = String.fromCharCode(67 + labels.length);
+        const gCol = colLetter(1 + labels.length);
+        const wCol = colLetter(2 + labels.length);
         setFormulaImpl(sheet, `${gCol}${row}`, productFormula(cells, labels.length), { border: true, numFmt: "0.0000" }, st);
         setFormulaImpl(sheet, `${wCol}${row}`, `${gCol}${row}/SUM(${gCol}${startRow + 3}:${gCol}${startRow + 2 + labels.length})`, { border: true, numFmt: "0.0000" }, st);
     }
     const statsRow = startRow + 4 + labels.length;
     setValueImpl(sheet, `A${statsRow}`, "Сумма весов:", labelStyle, st);
-    const weightsCol = String.fromCharCode(67 + labels.length);
+    const weightsCol = colLetter(2 + labels.length);
     setFormulaImpl(sheet, `B${statsRow}`, `SUM(${weightsCol}${startRow + 3}:${weightsCol}${startRow + 2 + labels.length})`, { border: true, numFmt: "0.0000" }, st);
     const colSumsRow = statsRow + 2;
     setValueImpl(sheet, `A${colSumsRow}`, "Суммы столбцов:", labelStyle, st);
     for (let c = 0; c < labels.length; c += 1) {
-        const letter = String.fromCharCode(66 + c);
+        const letter = colLetter(1 + c);
         setFormulaImpl(sheet, `${letter}${colSumsRow}`, `SUM(${letter}${startRow + 3}:${letter}${startRow + 2 + labels.length})`, { border: true, numFmt: "0.0000" }, st);
     }
-    const colSumAddresses = labels.map((_, index) => `${String.fromCharCode(66 + index)}${colSumsRow}`);
+    const colSumAddresses = labels.map((_, index) => `${colLetter(1 + index)}${colSumsRow}`);
     const weightAddresses = labels.map((_, index) => `${weightsCol}${startRow + 3 + index}`);
     setValueImpl(sheet, `A${colSumsRow + 1}`, "λ_max =", labelStyle, st);
     setFormulaImpl(sheet, `B${colSumsRow + 1}`, weightedSumFormula(colSumAddresses, weightAddresses), { border: true, numFmt: "0.0000" }, st);
@@ -228,7 +260,7 @@ function addContentsSheetImpl(workbook, sheetNames, st) {
     return sheet;
 }
 function createExcelGost(opts = {}) {
-    const st = createExcelStyle(opts);
+    const st = createExcelStyle(resolveExcelStyleAliases(opts));
     const HEADER_STYLE = { bold: true, border: true, fill: st.HEADER_FILL, align: "center" };
     const RESULT_STYLE = { bold: true, border: "medium", fill: st.RESULT_FILL, align: "center" };
     return {

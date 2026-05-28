@@ -18,6 +18,13 @@ export interface ExcelStyleConfig {
     HEADER_TITLE_SIZE: number;
     BORDER_STYLE: string;
 }
+export interface ExcelGostOptions extends Partial<ExcelStyleConfig> {
+    fontSize?: number;
+    fontName?: string;
+    headerFill?: string;
+    resultFill?: string;
+    tabColor?: string;
+}
 export interface CellStyleOptions {
     fontName?: string;
     size?: number;
@@ -58,9 +65,5 @@ export interface ExcelGostInstance {
     listFormulaRange(sheetName: string, addresses: string[]): string;
 }
 export declare function createExcelStyle(opts?: Partial<ExcelStyleConfig>): ExcelStyleConfig;
-export declare function productFormula(addresses: string[], exponent: number): string;
-export declare function absoluteRef(address: string): string;
-export declare function weightedSumFormula(valueAddresses: string[], weightAddresses: string[]): string;
-export declare function listFormulaRange(sheetName: string, addresses: string[]): string;
-export declare function createExcelGost(opts?: Partial<ExcelStyleConfig>): ExcelGostInstance;
+export declare function createExcelGost(opts?: ExcelGostOptions): ExcelGostInstance;
 //# sourceMappingURL=excel-gost.d.ts.map

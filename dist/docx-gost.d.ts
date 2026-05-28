@@ -1,4 +1,4 @@
-import { AlignmentType, BorderStyle, Document, Math as DocxMath, MathCurlyBrackets, MathFraction, MathIntegral, MathRadical, MathRoundBrackets, MathSquareBrackets, MathSubScript, MathSubSuperScript, MathSum, MathSuperScript, Paragraph, Table, TableOfContents, TabStopType, TextRun } from "docx";
+import { AlignmentType, BorderStyle, Document, Footer, Math as DocxMath, MathCurlyBrackets, MathFraction, MathIntegral, MathRadical, MathRoundBrackets, MathSquareBrackets, MathSubScript, MathSubSuperScript, MathSum, MathSuperScript, Paragraph, Table, TableOfContents, TabStopType, TextRun } from "docx";
 type DocxBorder = {
     style: (typeof BorderStyle)[keyof typeof BorderStyle];
     size: number;
@@ -98,6 +98,7 @@ export interface ParagraphOpts {
     font?: string;
     keepNext?: boolean;
     keepLines?: boolean;
+    imageType?: "png" | "jpg" | "gif" | "bmp";
 }
 export interface TableOpts {
     widths?: number[];
@@ -140,6 +141,15 @@ export interface TitlePageOpts {
     teacherTitle?: string;
     year: number | string;
 }
+export interface DocxSection {
+    properties: {
+        page: DocxStyleConfig["PAGE"];
+    };
+    footers: {
+        default: Footer;
+    };
+    children: Array<Paragraph | Table>;
+}
 export interface DocxGostInstance {
     readonly style: DocxStyleConfig;
     run(text: string | number, opts?: ParagraphOpts): TextRun;
@@ -161,9 +171,9 @@ export interface DocxGostInstance {
     formulaMath(content: unknown, opts?: ParagraphOpts): Paragraph;
     formulaInline(label: string, mathContent: unknown, opts?: ParagraphOpts): Paragraph;
     makeTable(rows: CellValue[][], opts?: TableOpts): Table;
-    makeTitlePage(opts: TitlePageOpts): object;
-    makeContentSection(children: Array<Paragraph | Table>, opts?: object): object;
-    makeDocument(sections: object[], opts?: {
+    makeTitlePage(opts: TitlePageOpts): DocxSection;
+    makeContentSection(children: Array<Paragraph | Table>, opts?: object): DocxSection;
+    makeDocument(sections: DocxSection[], opts?: {
         styles?: object;
     }): Document;
     saveDocument(doc: Document, outputPath: string): Promise<void>;

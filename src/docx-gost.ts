@@ -116,6 +116,7 @@ export interface ParagraphOpts {
   font?: string;
   keepNext?: boolean;
   keepLines?: boolean;
+  imageType?: "png" | "jpg" | "gif" | "bmp";
 }
 
 export interface TableOpts {
@@ -165,6 +166,12 @@ export interface TitlePageOpts {
   year: number | string;
 }
 
+export interface DocxSection {
+  properties: { page: DocxStyleConfig["PAGE"] };
+  footers: { default: Footer };
+  children: Array<Paragraph | Table>;
+}
+
 export interface DocxGostInstance {
   readonly style: DocxStyleConfig;
   run(text: string | number, opts?: ParagraphOpts): TextRun;
@@ -186,9 +193,9 @@ export interface DocxGostInstance {
   formulaMath(content: unknown, opts?: ParagraphOpts): Paragraph;
   formulaInline(label: string, mathContent: unknown, opts?: ParagraphOpts): Paragraph;
   makeTable(rows: CellValue[][], opts?: TableOpts): Table;
-  makeTitlePage(opts: TitlePageOpts): object;
-  makeContentSection(children: Array<Paragraph | Table>, opts?: object): object;
-  makeDocument(sections: object[], opts?: { styles?: object }): Document;
+  makeTitlePage(opts: TitlePageOpts): DocxSection;
+  makeContentSection(children: Array<Paragraph | Table>, opts?: object): DocxSection;
+  makeDocument(sections: DocxSection[], opts?: { styles?: object }): Document;
   saveDocument(doc: Document, outputPath: string): Promise<void>;
 }
 
@@ -449,7 +456,7 @@ function imageBlockImpl(st: DocxStyleConfig, imagePath: string | Buffer, width: 
     },
     keepNext: !!opts.keepNext,
     keepLines: opts.keepLines !== undefined ? opts.keepLines : true,
-    children: [new ImageRun({ data, type: "png", transformation: { width, height } } as ConstructorParameters<typeof ImageRun>[0])],
+    children: [new ImageRun({ data, type: opts.imageType ?? "png", transformation: { width, height } } as ConstructorParameters<typeof ImageRun>[0])],
   });
 }
 
@@ -653,7 +660,7 @@ function normalizeSubtitle(subtitle: string | string[] | undefined): string[] {
   return subtitle === undefined || subtitle === null ? [] : [subtitle];
 }
 
-function makeTitlePageImpl(st: DocxStyleConfig, opts: TitlePageOpts): object {
+function makeTitlePageImpl(st: DocxStyleConfig, opts: TitlePageOpts): DocxSection {
   const children: Paragraph[] = [
     titleLine(st, "Министерство науки и высшего образования Российской Федерации", { size: st.SIZE_HEADER }),
     titleLine(st, "Федеральное государственное автономное образовательное", { size: st.SIZE_HEADER }),
@@ -683,11 +690,11 @@ function makeTitlePageImpl(st: DocxStyleConfig, opts: TitlePageOpts): object {
   return { properties: { page: st.PAGE }, footers: { default: makeFooterCityImpl(st, opts.year) }, children };
 }
 
-function makeContentSectionImpl(st: DocxStyleConfig, children: Array<Paragraph | Table>): object {
+function makeContentSectionImpl(st: DocxStyleConfig, children: Array<Paragraph | Table>): DocxSection {
   return { properties: { page: st.PAGE }, footers: { default: makeFooterPageNumImpl(st) }, children };
 }
 
-function makeDocumentImpl(st: DocxStyleConfig, sections: object[], opts: { styles?: object } = {}): Document {
+function makeDocumentImpl(st: DocxStyleConfig, sections: DocxSection[], opts: { styles?: object } = {}): Document {
   return new Document({
     settings: { updateFields: true },
     styles: opts.styles ?? defaultStyles(st),
@@ -696,7 +703,7 @@ function makeDocumentImpl(st: DocxStyleConfig, sections: object[], opts: { style
 }
 
 function saveDocumentImpl(doc: Document, outputPath: string): Promise<void> {
-  return Packer.toBuffer(doc).then((buffer) => { fs.writeFileSync(outputPath, buffer); });
+  return Packer.toBuffer(doc).then((buffer) => fs.promises.writeFile(outputPath, buffer));
 }
 
 export function createDocxGost(factoryOpts: DocxGostOptions = {}): DocxGostInstance {

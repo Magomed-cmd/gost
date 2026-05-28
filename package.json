@@ -2,8 +2,18 @@
   "name": "@codex/gost",
   "version": "1.0.0",
   "description": "GOST 7.32 document generation utilities for docx and xlsx",
-  "main": "dist/docx-gost.js",
-  "types": "dist/docx-gost.d.ts",
+  "exports": {
+    "./docx": {
+      "require": "./dist/docx-gost.js",
+      "types": "./dist/docx-gost.d.ts"
+    },
+    "./excel": {
+      "require": "./dist/excel-gost.js",
+      "types": "./dist/excel-gost.d.ts"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "engines": { "node": ">=18" },
   "scripts": {
     "build": "tsc",
     "build:watch": "tsc --watch",
