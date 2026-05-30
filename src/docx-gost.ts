@@ -190,9 +190,17 @@ export interface DocxGostInstance {
   tableCaption(text: string, opts?: ParagraphOpts): Paragraph;
   createCaptionCounter(prefix: string, opts?: CaptionCounterOpts): CaptionCounter;
   placeholder(label: string, opts?: ParagraphOpts): Paragraph;
-  imageBlock(imagePath: string | Buffer, width: number, height: number, opts?: ParagraphOpts): Paragraph;
+  /** Явные размеры: imageBlock(src, 600, 400) или imageBlock(src, 600, 400, opts) */
+  imageBlock(src: string | Buffer, width: number, height: number, opts?: ImageBlockOpts): Paragraph;
+  /** Авто-размер из PNG-байт: imageBlock(src) или imageBlock(src, { maxWidth: 500 }) */
+  imageBlock(src: string | Buffer, opts?: ImageBlockOpts): Paragraph;
   codeLine(text: string, opts?: ParagraphOpts): Paragraph;
   codeBlock(lines: string[], opts?: ParagraphOpts): Paragraph[];
+  /**
+   * Читает файл с диска, нормализует переводы строк и табы, возвращает массив
+   * Paragraph в стиле кода. Эквивалентно codeBlock(readFileSync(p).split('\n')).
+   */
+  codeFile(filePath: string, opts?: ParagraphOpts): Paragraph[];
   formulaMath(content: unknown, opts?: ParagraphOpts): Paragraph;
   formulaInline(label: string, mathContent: unknown, opts?: ParagraphOpts): Paragraph;
   makeTable(rows: CellValue[][], opts?: TableOpts): Table;
@@ -211,6 +219,15 @@ export interface DocxGostInstance {
    * Вызывать перед makeDocument.
    */
   lint(children: Array<Paragraph | Table>): LintIssue[];
+}
+
+export interface ImageBlockOpts extends ParagraphOpts {
+  /**
+   * Максимальная ширина изображения в px при авто-определении размеров.
+   * Применяется только когда width/height не переданы явно.
+   * По умолчанию: 624 (ширина контента ГОСТ A4 при 150 DPI).
+   */
+  maxWidth?: number;
 }
 
 export interface DiagramBlockOpts {
@@ -468,19 +485,55 @@ function placeholderImpl(st: DocxStyleConfig, label: string, opts: ParagraphOpts
   }), "placeholder");
 }
 
-function imageBlockImpl(st: DocxStyleConfig, imagePath: string | Buffer, width: number, height: number, opts: ParagraphOpts = {}): Paragraph {
-  const data = Buffer.isBuffer(imagePath) ? imagePath : fs.readFileSync(imagePath);
+function imageBlockImpl(
+  st: DocxStyleConfig,
+  src: string | Buffer,
+  widthOrOpts?: number | ImageBlockOpts,
+  height?: number,
+  opts: ImageBlockOpts = {}
+): Paragraph {
+  const data = Buffer.isBuffer(src) ? src : fs.readFileSync(src);
+  let w: number, h: number, effectiveOpts: ImageBlockOpts;
+
+  if (typeof widthOrOpts === "number") {
+    // imageBlock(src, width, height, opts?)
+    w = widthOrOpts;
+    h = height!;
+    effectiveOpts = opts;
+  } else {
+    // imageBlock(src, opts?) — авто-размер из PNG-байт (PNG spec: bytes 16-19 width, 20-23 height)
+    effectiveOpts = widthOrOpts ?? {};
+    if (data.length < 24 || data.toString("ascii", 1, 4) !== "PNG") {
+      throw new Error(
+        "imageBlock(): авто-определение размеров поддерживает только PNG. " +
+        "Передай width и height явно для JPG/BMP/GIF."
+      );
+    }
+    const sized = autoImageSize(data, effectiveOpts.maxWidth ?? 624);
+    w = sized.width;
+    h = sized.height;
+  }
+
   return tagElement(new Paragraph({
-    alignment: (opts.align as (typeof AlignmentType)[keyof typeof AlignmentType]) || AlignmentType.CENTER,
+    alignment: (effectiveOpts.align as (typeof AlignmentType)[keyof typeof AlignmentType]) || AlignmentType.CENTER,
     spacing: {
-      line: opts.line ?? st.LINE,
-      before: opts.before ?? st.IMAGE_BEFORE,
-      after: opts.after ?? st.IMAGE_AFTER,
+      line: effectiveOpts.line ?? st.LINE,
+      before: effectiveOpts.before ?? st.IMAGE_BEFORE,
+      after: effectiveOpts.after ?? st.IMAGE_AFTER,
     },
-    keepNext: opts.keepNext !== undefined ? !!opts.keepNext : true,
-    keepLines: opts.keepLines !== undefined ? opts.keepLines : true,
-    children: [new ImageRun({ data, type: opts.imageType ?? "png", transformation: { width, height } } as ConstructorParameters<typeof ImageRun>[0])],
+    keepNext: effectiveOpts.keepNext !== undefined ? !!effectiveOpts.keepNext : true,
+    keepLines: effectiveOpts.keepLines !== undefined ? effectiveOpts.keepLines : true,
+    children: [new ImageRun({ data, type: effectiveOpts.imageType ?? "png", transformation: { width: w, height: h } } as ConstructorParameters<typeof ImageRun>[0])],
   }), "image");
+}
+
+function codeFileImpl(st: DocxStyleConfig, filePath: string, opts: ParagraphOpts = {}): Paragraph[] {
+  const content = fs.readFileSync(filePath, "utf8")
+    .replace(/\r\n/g, "\n")   // Windows CRLF → LF
+    .replace(/\t/g, "  ");    // табы → 2 пробела (читаемо в Courier New)
+  const lines = content.split("\n");
+  if (lines[lines.length - 1] === "") lines.pop(); // файл заканчивается \n → убираем пустую строку
+  return lines.map((line) => codeLineImpl(st, line, opts));
 }
 
 function codeLineImpl(st: DocxStyleConfig, text: string, opts: ParagraphOpts = {}): Paragraph {
@@ -778,9 +831,12 @@ export function createDocxGost(factoryOpts: DocxGostOptions = {}): DocxGostInsta
     tableCaption: (text, opts = {}) => tableCaptionImpl(st, text, opts),
     createCaptionCounter: (prefix, opts = {}) => createCaptionCounterImpl(st, prefix, opts),
     placeholder: (label, opts = {}) => placeholderImpl(st, label, opts),
-    imageBlock: (src, w, h, opts = {}) => imageBlockImpl(st, src, w, h, opts),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    imageBlock: (src: string | Buffer, wOrOpts?: any, h?: number, opts?: ImageBlockOpts) =>
+      imageBlockImpl(st, src, wOrOpts, h, opts ?? {}),
     codeLine: (text, opts = {}) => codeLineImpl(st, text, opts),
     codeBlock: (lines, opts = {}) => lines.map((line) => codeLineImpl(st, line, opts)),
+    codeFile: (filePath, opts = {}) => codeFileImpl(st, filePath, opts),
     formulaMath: (content, opts = {}) => formulaMathImpl(st, content, opts),
     formulaInline: (label, math, opts = {}) => formulaInlineImpl(st, label, math, opts),
     makeTable: (rows, opts = {}) => makeTableImpl(st, rows, opts),
