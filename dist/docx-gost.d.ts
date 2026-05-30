@@ -1,3 +1,4 @@
+import { LintIssue } from "./lint";
 import { AlignmentType, BorderStyle, Document, Footer, Math as DocxMath, MathCurlyBrackets, MathFraction, MathIntegral, MathRadical, MathRoundBrackets, MathSquareBrackets, MathSubScript, MathSubSuperScript, MathSum, MathSuperScript, Paragraph, Table, TableOfContents, TabStopType, TextRun } from "docx";
 type DocxBorder = {
     style: (typeof BorderStyle)[keyof typeof BorderStyle];
@@ -182,6 +183,12 @@ export interface DocxGostInstance {
      * Спредится прямо в children: `...await g.diagramBlock(puml, figures, "заголовок")`
      */
     diagramBlock(pumlSource: string, counter: CaptionCounter, captionText: string, opts?: DiagramBlockOpts): Promise<Paragraph[]>;
+    /**
+     * Анализирует children на пустые страницы и ГОСТ-нарушения.
+     * Возвращает список проблем и выводит их в консоль.
+     * Вызывать перед makeDocument.
+     */
+    lint(children: Array<Paragraph | Table>): LintIssue[];
 }
 export interface DiagramBlockOpts {
     /** DPI растеризации. По умолчанию: 150, для печати: 300 */
@@ -213,4 +220,5 @@ export declare function mathIntegral(content: unknown, opts?: {
 }): MathIntegral;
 export declare function createDocxGost(factoryOpts?: DocxGostOptions): DocxGostInstance;
 export { TableOfContents };
+export { lintChildren, printLintResults } from "./lint";
 //# sourceMappingURL=docx-gost.d.ts.map

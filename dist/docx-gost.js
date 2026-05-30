@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.TableOfContents = exports.DEFAULT_DOCX_STYLE = void 0;
+exports.printLintResults = exports.lintChildren = exports.TableOfContents = exports.DEFAULT_DOCX_STYLE = void 0;
 exports.createDocxStyle = createDocxStyle;
 exports.toMathComponents = toMathComponents;
 exports.mathExpr = mathExpr;
@@ -21,6 +21,7 @@ exports.createDocxGost = createDocxGost;
 const fs_1 = __importDefault(require("fs"));
 const plantuml_render_1 = require("./plantuml-render");
 const plantuml_size_1 = require("./plantuml-size");
+const lint_1 = require("./lint");
 const docx_1 = require("docx");
 Object.defineProperty(exports, "TableOfContents", { enumerable: true, get: function () { return docx_1.TableOfContents; } });
 exports.DEFAULT_DOCX_STYLE = {
@@ -136,10 +137,10 @@ function paragraphChildren(st, content, opts = {}) {
     });
 }
 function paragraphImpl(st, content, opts = {}) {
-    return new docx_1.Paragraph(paragraphOptions(st, opts, paragraphChildren(st, content, opts)));
+    return (0, lint_1.tagElement)(new docx_1.Paragraph(paragraphOptions(st, opts, paragraphChildren(st, content, opts))), "paragraph");
 }
 function centeredImpl(st, content, opts = {}) {
-    return paragraphImpl(st, content, { ...opts, align: docx_1.AlignmentType.CENTER, noIndent: true });
+    return (0, lint_1.tagElement)(paragraphImpl(st, content, { ...opts, align: docx_1.AlignmentType.CENTER, noIndent: true }), "centered");
 }
 function titleLine(st, content, opts = {}) {
     return centeredImpl(st, content, {
@@ -182,52 +183,52 @@ function defaultStyles(st) {
     };
 }
 function h1Impl(st, text, opts = {}) {
-    return new docx_1.Paragraph({
+    return (0, lint_1.tagElement)(new docx_1.Paragraph({
         ...paragraphOptions(st, { ...opts, align: docx_1.AlignmentType.CENTER, noIndent: true, before: 240, after: 120, keepNext: true }, [
             runImpl(st, text.toUpperCase(), { ...opts, bold: true, color: st.HEADING_COLOR }),
         ]),
         heading: docx_1.HeadingLevel.HEADING_1,
-    });
+    }), "h1");
 }
 function h2Impl(st, text, opts = {}) {
-    return new docx_1.Paragraph({
+    return (0, lint_1.tagElement)(new docx_1.Paragraph({
         ...paragraphOptions(st, { ...opts, before: 200, after: 80, keepNext: true }, [
             runImpl(st, text, { ...opts, bold: true, color: st.HEADING_COLOR }),
         ]),
         heading: docx_1.HeadingLevel.HEADING_2,
-    });
+    }), "h2");
 }
 function h3Impl(st, text, opts = {}) {
-    return new docx_1.Paragraph({
+    return (0, lint_1.tagElement)(new docx_1.Paragraph({
         ...paragraphOptions(st, { ...opts, before: 140, after: 60, keepNext: true }, [
             runImpl(st, text, { ...opts, bold: true, italics: true, color: st.HEADING_COLOR }),
         ]),
         heading: docx_1.HeadingLevel.HEADING_3,
-    });
+    }), "h3");
 }
 function blankImpl(st, opts = {}) {
-    return new docx_1.Paragraph({ spacing: { line: opts.line ?? st.LINE }, children: [runImpl(st, "", opts)] });
+    return (0, lint_1.tagElement)(new docx_1.Paragraph({ spacing: { line: opts.line ?? st.LINE }, children: [runImpl(st, "", opts)] }), "blank");
 }
 function pageBreakImpl() {
-    return new docx_1.Paragraph({ children: [new docx_1.PageBreak()] });
+    return (0, lint_1.tagElement)(new docx_1.Paragraph({ children: [new docx_1.PageBreak()] }), "pageBreak");
 }
 function captionImpl(st, text, opts = {}) {
-    return centeredImpl(st, text, {
+    return (0, lint_1.tagElement)(centeredImpl(st, text, {
         ...opts,
         before: opts.before ?? st.CAPTION_BEFORE,
         after: opts.after ?? st.CAPTION_AFTER,
         size: opts.size ?? st.SIZE,
-    });
+    }), "caption");
 }
 function tableCaptionImpl(st, text, opts = {}) {
-    return paragraphImpl(st, text, {
+    return (0, lint_1.tagElement)(paragraphImpl(st, text, {
         ...opts,
         align: docx_1.AlignmentType.LEFT,
         noIndent: true,
         before: opts.before ?? st.TABLE_CAPTION_BEFORE,
         after: opts.after ?? st.TABLE_CAPTION_AFTER,
         size: opts.size ?? st.SIZE,
-    });
+    }), "tableCaption");
 }
 function createCaptionCounterImpl(st, prefix, opts = {}) {
     let n = opts.start ?? 1;
@@ -239,7 +240,7 @@ function createCaptionCounterImpl(st, prefix, opts = {}) {
 }
 function placeholderImpl(st, label, opts = {}) {
     const border = { style: docx_1.BorderStyle.SINGLE, size: 4, color: "AAAAAA" };
-    return new docx_1.Paragraph({
+    return (0, lint_1.tagElement)(new docx_1.Paragraph({
         ...paragraphOptions(st, {
             ...opts,
             align: docx_1.AlignmentType.CENTER,
@@ -248,11 +249,11 @@ function placeholderImpl(st, label, opts = {}) {
             after: opts.after ?? 60,
         }, [runImpl(st, label, { ...opts, italics: true, color: opts.color ?? "888888" })]),
         border: { top: border, bottom: border, left: border, right: border },
-    });
+    }), "placeholder");
 }
 function imageBlockImpl(st, imagePath, width, height, opts = {}) {
     const data = Buffer.isBuffer(imagePath) ? imagePath : fs_1.default.readFileSync(imagePath);
-    return new docx_1.Paragraph({
+    return (0, lint_1.tagElement)(new docx_1.Paragraph({
         alignment: opts.align || docx_1.AlignmentType.CENTER,
         spacing: {
             line: opts.line ?? st.LINE,
@@ -262,14 +263,14 @@ function imageBlockImpl(st, imagePath, width, height, opts = {}) {
         keepNext: !!opts.keepNext,
         keepLines: opts.keepLines !== undefined ? opts.keepLines : true,
         children: [new docx_1.ImageRun({ data, type: opts.imageType ?? "png", transformation: { width, height } })],
-    });
+    }), "image");
 }
 function codeLineImpl(st, text, opts = {}) {
-    return paragraphImpl(st, [{ text, font: opts.font ?? st.CODE_FONT, size: opts.size ?? st.SIZE_CODE }], {
+    return (0, lint_1.tagElement)(paragraphImpl(st, [{ text, font: opts.font ?? st.CODE_FONT, size: opts.size ?? st.SIZE_CODE }], {
         ...opts,
         noIndent: true,
         line: opts.line ?? st.LINE,
-    });
+    }), "codeLine");
 }
 function toMathComponents(value) {
     if (value === undefined || value === null)
@@ -544,6 +545,14 @@ function createDocxGost(factoryOpts = {}) {
         makeDocument: (sections, opts = {}) => makeDocumentImpl(st, sections, opts),
         saveDocument: (doc, outputPath) => saveDocumentImpl(doc, outputPath),
         diagramBlock: (puml, counter, captionText, opts = {}) => diagramBlockImpl(st, puml, counter, captionText, opts),
+        lint: (children) => {
+            const issues = (0, lint_1.lintChildren)(children);
+            (0, lint_1.printLintResults)(issues);
+            return issues;
+        },
     };
 }
+var lint_2 = require("./lint");
+Object.defineProperty(exports, "lintChildren", { enumerable: true, get: function () { return lint_2.lintChildren; } });
+Object.defineProperty(exports, "printLintResults", { enumerable: true, get: function () { return lint_2.printLintResults; } });
 //# sourceMappingURL=docx-gost.js.map

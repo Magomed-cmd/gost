@@ -1,6 +1,7 @@
 import fs from "fs";
 import { renderDiagram, RenderDiagramOpts, SkinparamOpts } from "./plantuml-render";
 import { autoImageSize } from "./plantuml-size";
+import { tagElement, lintChildren, printLintResults, LintIssue } from "./lint";
 import {
   AlignmentType,
   BorderStyle,
@@ -204,6 +205,12 @@ export interface DocxGostInstance {
    * Спредится прямо в children: `...await g.diagramBlock(puml, figures, "заголовок")`
    */
   diagramBlock(pumlSource: string, counter: CaptionCounter, captionText: string, opts?: DiagramBlockOpts): Promise<Paragraph[]>;
+  /**
+   * Анализирует children на пустые страницы и ГОСТ-нарушения.
+   * Возвращает список проблем и выводит их в консоль.
+   * Вызывать перед makeDocument.
+   */
+  lint(children: Array<Paragraph | Table>): LintIssue[];
 }
 
 export interface DiagramBlockOpts {
@@ -334,11 +341,11 @@ function paragraphChildren(st: DocxStyleConfig, content: Content, opts: Paragrap
 }
 
 function paragraphImpl(st: DocxStyleConfig, content: Content, opts: ParagraphOpts = {}): Paragraph {
-  return new Paragraph(paragraphOptions(st, opts, paragraphChildren(st, content, opts)));
+  return tagElement(new Paragraph(paragraphOptions(st, opts, paragraphChildren(st, content, opts))), "paragraph");
 }
 
 function centeredImpl(st: DocxStyleConfig, content: Content, opts: ParagraphOpts = {}): Paragraph {
-  return paragraphImpl(st, content, { ...opts, align: AlignmentType.CENTER, noIndent: true });
+  return tagElement(paragraphImpl(st, content, { ...opts, align: AlignmentType.CENTER, noIndent: true }), "centered");
 }
 
 function titleLine(st: DocxStyleConfig, content: Content, opts: ParagraphOpts = {}): Paragraph {
@@ -384,58 +391,58 @@ function defaultStyles(st: DocxStyleConfig): object {
 }
 
 function h1Impl(st: DocxStyleConfig, text: string, opts: ParagraphOpts = {}): Paragraph {
-  return new Paragraph({
+  return tagElement(new Paragraph({
     ...paragraphOptions(st, { ...opts, align: AlignmentType.CENTER, noIndent: true, before: 240, after: 120, keepNext: true }, [
       runImpl(st, text.toUpperCase(), { ...opts, bold: true, color: st.HEADING_COLOR }),
     ]),
     heading: HeadingLevel.HEADING_1,
-  });
+  }), "h1");
 }
 
 function h2Impl(st: DocxStyleConfig, text: string, opts: ParagraphOpts = {}): Paragraph {
-  return new Paragraph({
+  return tagElement(new Paragraph({
     ...paragraphOptions(st, { ...opts, before: 200, after: 80, keepNext: true }, [
       runImpl(st, text, { ...opts, bold: true, color: st.HEADING_COLOR }),
     ]),
     heading: HeadingLevel.HEADING_2,
-  });
+  }), "h2");
 }
 
 function h3Impl(st: DocxStyleConfig, text: string, opts: ParagraphOpts = {}): Paragraph {
-  return new Paragraph({
+  return tagElement(new Paragraph({
     ...paragraphOptions(st, { ...opts, before: 140, after: 60, keepNext: true }, [
       runImpl(st, text, { ...opts, bold: true, italics: true, color: st.HEADING_COLOR }),
     ]),
     heading: HeadingLevel.HEADING_3,
-  });
+  }), "h3");
 }
 
 function blankImpl(st: DocxStyleConfig, opts: ParagraphOpts = {}): Paragraph {
-  return new Paragraph({ spacing: { line: opts.line ?? st.LINE }, children: [runImpl(st, "", opts)] });
+  return tagElement(new Paragraph({ spacing: { line: opts.line ?? st.LINE }, children: [runImpl(st, "", opts)] }), "blank");
 }
 
 function pageBreakImpl(): Paragraph {
-  return new Paragraph({ children: [new PageBreak()] });
+  return tagElement(new Paragraph({ children: [new PageBreak()] }), "pageBreak");
 }
 
 function captionImpl(st: DocxStyleConfig, text: string, opts: ParagraphOpts = {}): Paragraph {
-  return centeredImpl(st, text, {
+  return tagElement(centeredImpl(st, text, {
     ...opts,
     before: opts.before ?? st.CAPTION_BEFORE,
     after: opts.after ?? st.CAPTION_AFTER,
     size: opts.size ?? st.SIZE,
-  });
+  }), "caption");
 }
 
 function tableCaptionImpl(st: DocxStyleConfig, text: string, opts: ParagraphOpts = {}): Paragraph {
-  return paragraphImpl(st, text, {
+  return tagElement(paragraphImpl(st, text, {
     ...opts,
     align: AlignmentType.LEFT,
     noIndent: true,
     before: opts.before ?? st.TABLE_CAPTION_BEFORE,
     after: opts.after ?? st.TABLE_CAPTION_AFTER,
     size: opts.size ?? st.SIZE,
-  });
+  }), "tableCaption");
 }
 
 function createCaptionCounterImpl(st: DocxStyleConfig, prefix: string, opts: CaptionCounterOpts = {}): CaptionCounter {
@@ -449,7 +456,7 @@ function createCaptionCounterImpl(st: DocxStyleConfig, prefix: string, opts: Cap
 
 function placeholderImpl(st: DocxStyleConfig, label: string, opts: ParagraphOpts = {}): Paragraph {
   const border = { style: BorderStyle.SINGLE, size: 4, color: "AAAAAA" };
-  return new Paragraph({
+  return tagElement(new Paragraph({
     ...paragraphOptions(st, {
       ...opts,
       align: AlignmentType.CENTER,
@@ -458,12 +465,12 @@ function placeholderImpl(st: DocxStyleConfig, label: string, opts: ParagraphOpts
       after: opts.after ?? 60,
     }, [runImpl(st, label, { ...opts, italics: true, color: opts.color ?? "888888" })]),
     border: { top: border, bottom: border, left: border, right: border },
-  });
+  }), "placeholder");
 }
 
 function imageBlockImpl(st: DocxStyleConfig, imagePath: string | Buffer, width: number, height: number, opts: ParagraphOpts = {}): Paragraph {
   const data = Buffer.isBuffer(imagePath) ? imagePath : fs.readFileSync(imagePath);
-  return new Paragraph({
+  return tagElement(new Paragraph({
     alignment: (opts.align as (typeof AlignmentType)[keyof typeof AlignmentType]) || AlignmentType.CENTER,
     spacing: {
       line: opts.line ?? st.LINE,
@@ -473,15 +480,15 @@ function imageBlockImpl(st: DocxStyleConfig, imagePath: string | Buffer, width: 
     keepNext: !!opts.keepNext,
     keepLines: opts.keepLines !== undefined ? opts.keepLines : true,
     children: [new ImageRun({ data, type: opts.imageType ?? "png", transformation: { width, height } } as ConstructorParameters<typeof ImageRun>[0])],
-  });
+  }), "image");
 }
 
 function codeLineImpl(st: DocxStyleConfig, text: string, opts: ParagraphOpts = {}): Paragraph {
-  return paragraphImpl(st, [{ text, font: opts.font ?? st.CODE_FONT, size: opts.size ?? st.SIZE_CODE }], {
+  return tagElement(paragraphImpl(st, [{ text, font: opts.font ?? st.CODE_FONT, size: opts.size ?? st.SIZE_CODE }], {
     ...opts,
     noIndent: true,
     line: opts.line ?? st.LINE,
-  });
+  }), "codeLine");
 }
 
 export function toMathComponents(value: unknown): MathComponent[] {
@@ -783,7 +790,13 @@ export function createDocxGost(factoryOpts: DocxGostOptions = {}): DocxGostInsta
     saveDocument: (doc, outputPath) => saveDocumentImpl(doc, outputPath),
     diagramBlock: (puml, counter, captionText, opts = {}) =>
       diagramBlockImpl(st, puml, counter, captionText, opts),
+    lint: (children) => {
+      const issues = lintChildren(children);
+      printLintResults(issues);
+      return issues;
+    },
   };
 }
 
 export { TableOfContents };
+export { lintChildren, printLintResults } from "./lint";
