@@ -19,6 +19,8 @@ exports.mathSum = mathSum;
 exports.mathIntegral = mathIntegral;
 exports.createDocxGost = createDocxGost;
 const fs_1 = __importDefault(require("fs"));
+const plantuml_render_1 = require("./plantuml-render");
+const plantuml_size_1 = require("./plantuml-size");
 const docx_1 = require("docx");
 Object.defineProperty(exports, "TableOfContents", { enumerable: true, get: function () { return docx_1.TableOfContents; } });
 exports.DEFAULT_DOCX_STYLE = {
@@ -464,14 +466,26 @@ function makeTitlePageImpl(st, opts) {
         new docx_1.Paragraph({
             spacing: { line: st.LINE },
             tabStops: st.TITLE_TAB_STOPS,
-            children: [runImpl(st, `студент группы ${opts.group}`), new docx_1.Tab(), runImpl(st, "_______________"), new docx_1.Tab(), runImpl(st, opts.author)],
+            children: [
+                runImpl(st, `студент группы ${opts.group}`),
+                new docx_1.TextRun({ children: [new docx_1.Tab()], font: st.FONT, size: st.SIZE }),
+                runImpl(st, "_______________"),
+                new docx_1.TextRun({ children: [new docx_1.Tab()], font: st.FONT, size: st.SIZE }),
+                runImpl(st, opts.author),
+            ],
         }),
         blankImpl(st),
         new docx_1.Paragraph({ spacing: { line: st.LINE }, indent: { left: st.INDENT }, children: [runImpl(st, "Принял")] }),
         new docx_1.Paragraph({
             spacing: { line: st.LINE, after: 560 },
             tabStops: st.TITLE_TAB_STOPS,
-            children: [runImpl(st, opts.teacherTitle ?? "Доцент кафедры"), new docx_1.Tab(), runImpl(st, "_______________"), new docx_1.Tab(), runImpl(st, opts.teacher)],
+            children: [
+                runImpl(st, opts.teacherTitle ?? "Доцент кафедры"),
+                new docx_1.TextRun({ children: [new docx_1.Tab()], font: st.FONT, size: st.SIZE }),
+                runImpl(st, "_______________"),
+                new docx_1.TextRun({ children: [new docx_1.Tab()], font: st.FONT, size: st.SIZE }),
+                runImpl(st, opts.teacher),
+            ],
         }),
     ];
     return { properties: { page: st.PAGE }, footers: { default: makeFooterCityImpl(st, opts.year) }, children };
@@ -488,6 +502,19 @@ function makeDocumentImpl(st, sections, opts = {}) {
 }
 function saveDocumentImpl(doc, outputPath) {
     return docx_1.Packer.toBuffer(doc).then((buffer) => fs_1.default.promises.writeFile(outputPath, buffer));
+}
+async function diagramBlockImpl(st, pumlSource, counter, captionText, opts = {}) {
+    const { dpi = 150, maxWidth = 624 } = opts;
+    const renderOpts = { dpi, skinparams: opts.skinparams };
+    const png = await (0, plantuml_render_1.renderDiagram)(pumlSource, renderOpts);
+    const { width, height } = (0, plantuml_size_1.autoImageSize)(png, maxWidth);
+    if (height > 900) {
+        console.warn(`[WARN] Диаграмма "${captionText}" высотой ${height}px — может не влезть на страницу`);
+    }
+    return [
+        imageBlockImpl(st, png, width, height),
+        counter.caption(captionText),
+    ];
 }
 function createDocxGost(factoryOpts = {}) {
     const st = createDocxStyle(factoryOpts.style);
@@ -516,6 +543,7 @@ function createDocxGost(factoryOpts = {}) {
         makeContentSection: (children) => makeContentSectionImpl(st, children),
         makeDocument: (sections, opts = {}) => makeDocumentImpl(st, sections, opts),
         saveDocument: (doc, outputPath) => saveDocumentImpl(doc, outputPath),
+        diagramBlock: (puml, counter, captionText, opts = {}) => diagramBlockImpl(st, puml, counter, captionText, opts),
     };
 }
 //# sourceMappingURL=docx-gost.js.map

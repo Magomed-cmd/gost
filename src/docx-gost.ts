@@ -1,4 +1,6 @@
 import fs from "fs";
+import { renderDiagram, RenderDiagramOpts, SkinparamOpts } from "./plantuml-render";
+import { autoImageSize } from "./plantuml-size";
 import {
   AlignmentType,
   BorderStyle,
@@ -197,6 +199,20 @@ export interface DocxGostInstance {
   makeContentSection(children: Array<Paragraph | Table>, opts?: object): DocxSection;
   makeDocument(sections: DocxSection[], opts?: { styles?: object }): Document;
   saveDocument(doc: Document, outputPath: string): Promise<void>;
+  /**
+   * Рендерит puml-строку → авторазмер → imageBlock + подпись.
+   * Спредится прямо в children: `...await g.diagramBlock(puml, figures, "заголовок")`
+   */
+  diagramBlock(pumlSource: string, counter: CaptionCounter, captionText: string, opts?: DiagramBlockOpts): Promise<Paragraph[]>;
+}
+
+export interface DiagramBlockOpts {
+  /** DPI растеризации. По умолчанию: 150, для печати: 300 */
+  dpi?: number;
+  /** Максимальная ширина px. По умолчанию: 624 (ГОСТ A4) */
+  maxWidth?: number;
+  /** Переопределение skinparam */
+  skinparams?: Record<string, string>;
 }
 
 export const DEFAULT_DOCX_STYLE: DocxStyleConfig = {
@@ -677,14 +693,26 @@ function makeTitlePageImpl(st: DocxStyleConfig, opts: TitlePageOpts): DocxSectio
     new Paragraph({
       spacing: { line: st.LINE },
       tabStops: st.TITLE_TAB_STOPS,
-      children: [runImpl(st, `студент группы ${opts.group}`), new Tab(), runImpl(st, "_______________"), new Tab(), runImpl(st, opts.author)],
+      children: [
+        runImpl(st, `студент группы ${opts.group}`),
+        new TextRun({ children: [new Tab()], font: st.FONT, size: st.SIZE }),
+        runImpl(st, "_______________"),
+        new TextRun({ children: [new Tab()], font: st.FONT, size: st.SIZE }),
+        runImpl(st, opts.author),
+      ],
     }),
     blankImpl(st),
     new Paragraph({ spacing: { line: st.LINE }, indent: { left: st.INDENT }, children: [runImpl(st, "Принял")] }),
     new Paragraph({
       spacing: { line: st.LINE, after: 560 },
       tabStops: st.TITLE_TAB_STOPS,
-      children: [runImpl(st, opts.teacherTitle ?? "Доцент кафедры"), new Tab(), runImpl(st, "_______________"), new Tab(), runImpl(st, opts.teacher)],
+      children: [
+        runImpl(st, opts.teacherTitle ?? "Доцент кафедры"),
+        new TextRun({ children: [new Tab()], font: st.FONT, size: st.SIZE }),
+        runImpl(st, "_______________"),
+        new TextRun({ children: [new Tab()], font: st.FONT, size: st.SIZE }),
+        runImpl(st, opts.teacher),
+      ],
     }),
   ];
   return { properties: { page: st.PAGE }, footers: { default: makeFooterCityImpl(st, opts.year) }, children };
@@ -704,6 +732,26 @@ function makeDocumentImpl(st: DocxStyleConfig, sections: DocxSection[], opts: { 
 
 function saveDocumentImpl(doc: Document, outputPath: string): Promise<void> {
   return Packer.toBuffer(doc).then((buffer) => fs.promises.writeFile(outputPath, buffer));
+}
+
+async function diagramBlockImpl(
+  st: DocxStyleConfig,
+  pumlSource: string,
+  counter: CaptionCounter,
+  captionText: string,
+  opts: DiagramBlockOpts = {}
+): Promise<Paragraph[]> {
+  const { dpi = 150, maxWidth = 624 } = opts;
+  const renderOpts: RenderDiagramOpts & SkinparamOpts = { dpi, skinparams: opts.skinparams };
+  const png = await renderDiagram(pumlSource, renderOpts);
+  const { width, height } = autoImageSize(png, maxWidth);
+  if (height > 900) {
+    console.warn(`[WARN] Диаграмма "${captionText}" высотой ${height}px — может не влезть на страницу`);
+  }
+  return [
+    imageBlockImpl(st, png, width, height),
+    counter.caption(captionText),
+  ];
 }
 
 export function createDocxGost(factoryOpts: DocxGostOptions = {}): DocxGostInstance {
@@ -733,6 +781,8 @@ export function createDocxGost(factoryOpts: DocxGostOptions = {}): DocxGostInsta
     makeContentSection: (children) => makeContentSectionImpl(st, children),
     makeDocument: (sections, opts = {}) => makeDocumentImpl(st, sections, opts),
     saveDocument: (doc, outputPath) => saveDocumentImpl(doc, outputPath),
+    diagramBlock: (puml, counter, captionText, opts = {}) =>
+      diagramBlockImpl(st, puml, counter, captionText, opts),
   };
 }
 

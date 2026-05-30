@@ -177,6 +177,19 @@ export interface DocxGostInstance {
         styles?: object;
     }): Document;
     saveDocument(doc: Document, outputPath: string): Promise<void>;
+    /**
+     * Рендерит puml-строку → авторазмер → imageBlock + подпись.
+     * Спредится прямо в children: `...await g.diagramBlock(puml, figures, "заголовок")`
+     */
+    diagramBlock(pumlSource: string, counter: CaptionCounter, captionText: string, opts?: DiagramBlockOpts): Promise<Paragraph[]>;
+}
+export interface DiagramBlockOpts {
+    /** DPI растеризации. По умолчанию: 150, для печати: 300 */
+    dpi?: number;
+    /** Максимальная ширина px. По умолчанию: 624 (ГОСТ A4) */
+    maxWidth?: number;
+    /** Переопределение skinparam */
+    skinparams?: Record<string, string>;
 }
 export declare const DEFAULT_DOCX_STYLE: DocxStyleConfig;
 export declare function createDocxStyle(opts?: DocxGostOptions["style"]): DocxStyleConfig;
