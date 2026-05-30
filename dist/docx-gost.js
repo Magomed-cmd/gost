@@ -260,7 +260,7 @@ function imageBlockImpl(st, imagePath, width, height, opts = {}) {
             before: opts.before ?? st.IMAGE_BEFORE,
             after: opts.after ?? st.IMAGE_AFTER,
         },
-        keepNext: !!opts.keepNext,
+        keepNext: opts.keepNext !== undefined ? !!opts.keepNext : true,
         keepLines: opts.keepLines !== undefined ? opts.keepLines : true,
         children: [new docx_1.ImageRun({ data, type: opts.imageType ?? "png", transformation: { width, height } })],
     }), "image");

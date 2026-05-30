@@ -477,7 +477,7 @@ function imageBlockImpl(st: DocxStyleConfig, imagePath: string | Buffer, width: 
       before: opts.before ?? st.IMAGE_BEFORE,
       after: opts.after ?? st.IMAGE_AFTER,
     },
-    keepNext: !!opts.keepNext,
+    keepNext: opts.keepNext !== undefined ? !!opts.keepNext : true,
     keepLines: opts.keepLines !== undefined ? opts.keepLines : true,
     children: [new ImageRun({ data, type: opts.imageType ?? "png", transformation: { width, height } } as ConstructorParameters<typeof ImageRun>[0])],
   }), "image");

@@ -146,6 +146,40 @@ const rulePlaceholderLeft: Rule = (types, i, issues) => {
   }
 };
 
+/**
+ * Правило: явный pageBreak между image и caption.
+ * image → (blanks?) → pageBreak → ... → caption означает что подпись окажется
+ * на другой странице, чем рисунок.
+ */
+const ruleImageCaptionSplit: Rule = (types, i, issues) => {
+  if (types[i] !== "image") return;
+  // Ищем следующий значимый элемент после image (пропускаем blank)
+  let j = i + 1;
+  while (j < types.length && types[j] === "blank") j++;
+  if (j < types.length && types[j] === "pageBreak") {
+    issues.push({
+      level: "warn", index: i, code: "image-caption-split",
+      message: `image на позиции ${i} отделён от подписи явным pageBreak на позиции ${j} — рисунок и подпись окажутся на разных страницах.`,
+    });
+  }
+};
+
+/**
+ * Правило: явный pageBreak между tableCaption и table.
+ * По ГОСТ подпись таблицы идёт над таблицей — разрыв между ними недопустим.
+ */
+const ruleTableCaptionSplit: Rule = (types, i, issues) => {
+  if (types[i] !== "tableCaption") return;
+  let j = i + 1;
+  while (j < types.length && types[j] === "blank") j++;
+  if (j < types.length && types[j] === "pageBreak") {
+    issues.push({
+      level: "warn", index: i, code: "table-caption-split",
+      message: `tableCaption на позиции ${i} отделена от таблицы явным pageBreak на позиции ${j} — подпись и таблица окажутся на разных страницах.`,
+    });
+  }
+};
+
 const RULES: Rule[] = [
   rulePageBreakAtStart,
   rulePageBreakAtEnd,
@@ -155,6 +189,8 @@ const RULES: Rule[] = [
   ruleBlankBeforePageBreak,
   ruleTooManyBlanks,
   ruleImageWithoutCaption,
+  ruleImageCaptionSplit,
+  ruleTableCaptionSplit,
   rulePlaceholderLeft,
 ];
 

@@ -103,6 +103,39 @@ describe("placeholder-left", () => {
         expect(codes([paragraph("A"), paragraph("B")])).not.toContain("placeholder-left");
     });
 });
+// ── Разрыв рисунок/подпись ────────────────────────────────────────────────────
+describe("image-caption-split", () => {
+    test("image → pageBreak → caption → warn", () => {
+        const cap = figures.caption("описание");
+        expect(codes([imageBlock(fakePng, 400, 300), pageBreak(), cap])).toContain("image-caption-split");
+    });
+    test("image → blank → pageBreak → caption → warn", () => {
+        const cap = figures.caption("описание");
+        expect(codes([imageBlock(fakePng, 400, 300), blank(), pageBreak(), cap])).toContain("image-caption-split");
+    });
+    test("image → caption (без pageBreak) → нет warn", () => {
+        const cap = figures.caption("описание");
+        expect(codes([imageBlock(fakePng, 400, 300), cap])).not.toContain("image-caption-split");
+    });
+});
+describe("table-caption-split", () => {
+    test("tableCaption → pageBreak → нет таблицы → warn", () => {
+        const tables = g.createCaptionCounter("Таблица", { table: true });
+        const cap = tables.caption("данные");
+        expect(codes([cap, pageBreak(), paragraph("текст")])).toContain("table-caption-split");
+    });
+    test("tableCaption → blank → pageBreak → warn", () => {
+        const tables = g.createCaptionCounter("Таблица", { table: true });
+        const cap = tables.caption("данные");
+        expect(codes([cap, blank(), pageBreak()])).toContain("table-caption-split");
+    });
+    test("tableCaption → table (без pageBreak) → нет warn", () => {
+        const tables = g.createCaptionCounter("Таблица", { table: true });
+        const cap = tables.caption("данные");
+        const tbl = g.makeTable([["A", "B"]]);
+        expect(codes([cap, tbl])).not.toContain("table-caption-split");
+    });
+});
 // ── Чистый документ ───────────────────────────────────────────────────────────
 describe("чистый документ", () => {
     test("нормальная структура не даёт предупреждений", () => {
