@@ -233,7 +233,11 @@ export interface ImageBlockOpts extends ParagraphOpts {
 export interface DiagramBlockOpts {
   /** DPI растеризации. По умолчанию: 150, для печати: 300 */
   dpi?: number;
-  /** Максимальная ширина px. По умолчанию: 624 (ГОСТ A4) */
+  /**
+   * Максимальная ширина изображения в px.
+   * По умолчанию вычисляется как contentWidth × dpi: при 150 DPI = 974px, при 300 DPI = 1949px.
+   * Переопредели только если нужен нестандартный размер.
+   */
   maxWidth?: number;
   /** Переопределение skinparam */
   skinparams?: Record<string, string>;
@@ -801,7 +805,10 @@ async function diagramBlockImpl(
   captionText: string,
   opts: DiagramBlockOpts = {}
 ): Promise<Paragraph[]> {
-  const { dpi = 150, maxWidth = 624 } = opts;
+  const dpi = opts.dpi ?? 150;
+  // maxWidth должен соответствовать dpi: при 150 DPI контент = 974px, при 96 DPI = 624px.
+  // Формула: contentWidthInches × dpi = (CONTENT_WIDTH / 1440) × dpi
+  const maxWidth = opts.maxWidth ?? Math.round((st.CONTENT_WIDTH / 1440) * dpi);
   const renderOpts: RenderDiagramOpts & SkinparamOpts = { dpi, skinparams: opts.skinparams };
   const png = await renderDiagram(pumlSource, renderOpts);
   const { width, height } = autoImageSize(png, maxWidth);
