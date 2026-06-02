@@ -14,10 +14,18 @@ export interface PlantUmlGostOptions {
 }
 
 export interface PlantUmlGostInstance {
-  useCaseDiagram(): UseCaseBuilder;
-  classDiagram(): ClassDiagramBuilder;
-  sequenceDiagram(): SequenceBuilder;
-  stateDiagram(): StateBuilder;
+  useCaseDiagram():    UseCaseBuilder;
+  classDiagram():      ClassDiagramBuilder;
+  sequenceDiagram():   SequenceBuilder;
+  stateDiagram():      StateBuilder;
+  activityDiagram():   ActivityBuilder;
+  componentDiagram():  ComponentBuilder;
+  deploymentDiagram(): DeploymentBuilder;
+  objectDiagram():     ObjectBuilder;
+  erDiagram():         ERBuilder;
+  timingDiagram():     TimingBuilder;
+  mindMap():           MindMapBuilder;
+  ganttChart():        GanttBuilder;
   /** Рендерит puml-строку, возвращает PNG Buffer */
   render(puml: string, opts?: RenderDiagramOpts & SkinparamOpts): Promise<Buffer>;
   /** Авторазмер PNG под ширину контента */
@@ -235,16 +243,338 @@ export class StateBuilder extends DiagramBuilder {
   }
 }
 
+// ── Activity builder ──────────────────────────────────────────────────────────
+
+export class ActivityBuilder extends DiagramBuilder {
+  /** Начало диаграммы */
+  start(): this { return this.add("start"); }
+
+  /** Нормальное завершение (stop-узел) */
+  stop(): this { return this.add("stop"); }
+
+  /** Конечный узел (end-узел c завершением потока) */
+  end(): this { return this.add("end"); }
+
+  /** Действие — прямоугольник с текстом */
+  action(text: string): this { return this.add(`:${text};`); }
+
+  /** Заметка рядом с текущим действием */
+  note(text: string, side: "right" | "left" = "right"): this {
+    return this.add(`note ${side}: ${text}`);
+  }
+
+  /** Условное ветвление. noFn и метки опциональны */
+  if(
+    condition: string,
+    yesFn: (b: ActivityBuilder) => void,
+    noFn?: (b: ActivityBuilder) => void,
+    yesLabel = "yes",
+    noLabel = "no",
+  ): this {
+    this.add(`if (${condition}?) then (${yesLabel})`);
+    yesFn(this);
+    if (noFn) {
+      this.add(`else (${noLabel})`);
+      noFn(this);
+    }
+    return this.add("endif");
+  }
+
+  /** Цикл while */
+  while(condition: string, fn: (b: ActivityBuilder) => void, exitLabel?: string): this {
+    this.add(`while (${condition}?)`);
+    fn(this);
+    return this.add(exitLabel ? `endwhile (${exitLabel})` : "endwhile");
+  }
+
+  /** Параллельное ветвление: каждый элемент массива — одна ветвь */
+  fork(...branches: Array<(b: ActivityBuilder) => void>): this {
+    branches.forEach((branch, i) => {
+      this.add(i === 0 ? "fork" : "fork again");
+      branch(this);
+    });
+    return this.add("end fork");
+  }
+
+  /** Swimlane / раздел */
+  partition(name: string, fn: (b: ActivityBuilder) => void): this {
+    this.add(`partition "${name}" {`);
+    fn(this);
+    return this.add("}");
+  }
+}
+
+// ── Component builder ─────────────────────────────────────────────────────────
+
+export class ComponentBuilder extends DiagramBuilder {
+  /** Компонент */
+  component(name: string, alias?: string): this {
+    return this.add(alias ? `component [${name}] as ${alias}` : `component [${name}]`);
+  }
+
+  /** Интерфейс */
+  interface(name: string, alias?: string): this {
+    return this.add(alias ? `interface "${name}" as ${alias}` : `interface "${name}"`);
+  }
+
+  /** База данных */
+  database(name: string, alias?: string): this {
+    return this.add(alias ? `database "${name}" as ${alias}` : `database "${name}"`);
+  }
+
+  /** Облако / внешняя система */
+  cloud(name: string, alias?: string): this {
+    return this.add(alias ? `cloud "${name}" as ${alias}` : `cloud "${name}"`);
+  }
+
+  /** Направленная зависимость */
+  arrow(from: string, to: string, label?: string): this {
+    return this.add(label ? `${from} --> ${to} : ${label}` : `${from} --> ${to}`);
+  }
+
+  /** Ненаправленная линия связи */
+  link(from: string, to: string, label?: string): this {
+    return this.add(label ? `${from} -- ${to} : ${label}` : `${from} -- ${to}`);
+  }
+
+  /** Сгруппировать в пакет / подсистему */
+  package(name: string, fn: (b: ComponentBuilder) => void): this {
+    this.add(`package "${name}" {`);
+    fn(this);
+    return this.add("}");
+  }
+}
+
+// ── Deployment builder ────────────────────────────────────────────────────────
+
+export class DeploymentBuilder extends DiagramBuilder {
+  /** Физический узел (сервер, устройство) с опциональным вложением */
+  node(name: string, alias?: string, fn?: (b: DeploymentBuilder) => void): this {
+    if (fn) {
+      this.add(alias ? `node "${name}" as ${alias} {` : `node "${name}" {`);
+      fn(this);
+      return this.add("}");
+    }
+    return this.add(alias ? `node "${name}" as ${alias}` : `node "${name}"`);
+  }
+
+  /** Компонент внутри узла */
+  component(name: string, alias?: string): this {
+    return this.add(alias ? `component [${name}] as ${alias}` : `component [${name}]`);
+  }
+
+  /** База данных */
+  database(name: string, alias?: string): this {
+    return this.add(alias ? `database "${name}" as ${alias}` : `database "${name}"`);
+  }
+
+  /** Артефакт (jar, war, исполняемый файл) */
+  artifact(name: string, alias?: string): this {
+    return this.add(alias ? `artifact "${name}" as ${alias}` : `artifact "${name}"`);
+  }
+
+  /** Облачная зона с опциональным вложением */
+  cloud(name: string, fn?: (b: DeploymentBuilder) => void): this {
+    if (fn) {
+      this.add(`cloud "${name}" {`);
+      fn(this);
+      return this.add("}");
+    }
+    return this.add(`cloud "${name}"`);
+  }
+
+  /** Направленное соединение */
+  arrow(from: string, to: string, label?: string): this {
+    return this.add(label ? `${from} --> ${to} : ${label}` : `${from} --> ${to}`);
+  }
+
+  /** Физическое соединение без стрелки */
+  link(from: string, to: string, label?: string): this {
+    return this.add(label ? `${from} -- ${to} : ${label}` : `${from} -- ${to}`);
+  }
+}
+
+// ── Object builder ────────────────────────────────────────────────────────────
+
+export class ObjectBuilder extends DiagramBuilder {
+  /** Объект-экземпляр с необязательными полями key = value */
+  object(name: string, fields: Record<string, string | number> = {}): this {
+    const entries = Object.entries(fields);
+    if (entries.length === 0) return this.add(`object ${name}`);
+    this.add(`object ${name} {`);
+    entries.forEach(([k, v]) => this.add(`  ${k} = ${v}`));
+    return this.add("}");
+  }
+
+  /** Связь между объектами */
+  link(from: string, to: string, label?: string): this {
+    return this.add(label ? `${from} --> ${to} : ${label}` : `${from} --> ${to}`);
+  }
+}
+
+// ── ER builder ────────────────────────────────────────────────────────────────
+
+/**
+ * Готовые константы кардинальности для ER-диаграмм PlantUML.
+ * Используй как fromCard / toCard в ERBuilder.relation().
+ * @example er.relation("User", ER.ONE_ONLY, ER.ZERO_OR_MANY, "Order", "places")
+ */
+export const ER = {
+  /** Ровно один  | */
+  ONE:          "|",
+  /** Только один ||  */
+  ONE_ONLY:     "||",
+  /** Ноль или один |o */
+  ZERO_OR_ONE:  "|o",
+  /** Один или много }| */
+  ONE_OR_MANY:  "}|",
+  /** Ноль или много }o */
+  ZERO_OR_MANY: "}o",
+} as const;
+
+export class ERBuilder extends DiagramBuilder {
+  /**
+   * Объявить сущность.
+   * @param pkFields - поля первичного ключа (отделяются чертой от обычных полей)
+   * @param fields   - обычные поля
+   */
+  entity(name: string, pkFields: string[], fields: string[] = []): this {
+    this.add(`entity "${name}" {`);
+    pkFields.forEach((f) => this.add(`  * ${f}`));
+    if (pkFields.length > 0 && fields.length > 0) this.add("  --");
+    fields.forEach((f) => this.add(`  ${f}`));
+    return this.add("}");
+  }
+
+  /**
+   * Связь между сущностями с кардинальностью.
+   * @param fromCard - кардинальность со стороны from (используй константы ER.*)
+   * @param toCard   - кардинальность со стороны to
+   */
+  relation(from: string, fromCard: string, toCard: string, to: string, label?: string): this {
+    return this.add(label
+      ? `${from} ${fromCard}--${toCard} ${to} : ${label}`
+      : `${from} ${fromCard}--${toCard} ${to}`
+    );
+  }
+}
+
+// ── Timing builder ────────────────────────────────────────────────────────────
+
+export class TimingBuilder extends DiagramBuilder {
+  /** Участник типа concise — переключается между дискретными состояниями */
+  concise(name: string, alias?: string): this {
+    return this.add(alias ? `concise "${name}" as ${alias}` : `concise "${name}"`);
+  }
+
+  /** Участник типа robust — аналоговый сигнал с длительностью переходов */
+  robust(name: string, alias?: string): this {
+    return this.add(alias ? `robust "${name}" as ${alias}` : `robust "${name}"`);
+  }
+
+  /** Тактовый сигнал с периодом */
+  clock(name: string, period: number): this {
+    return this.add(`clock "${name}" with period ${period}`);
+  }
+
+  /** Временна́я точка — все последующие state() привязаны к этому моменту */
+  at(time: number | string): this {
+    return this.add(`@${time}`);
+  }
+
+  /** Состояние участника в текущей временно́й точке */
+  state(participant: string, value: string): this {
+    return this.add(`${participant} is ${value}`);
+  }
+
+  /** Сообщение между участниками */
+  arrow(from: string, to: string, label: string): this {
+    return this.add(`${from} -> ${to} : ${label}`);
+  }
+
+  /** Выделить временной отрезок цветом */
+  highlight(fromTime: number, toTime: number, label?: string): this {
+    return this.add(label
+      ? `highlight ${fromTime} to ${toTime} : ${label}`
+      : `highlight ${fromTime} to ${toTime}`
+    );
+  }
+}
+
+// ── MindMap builder ───────────────────────────────────────────────────────────
+
+export class MindMapBuilder extends DiagramBuilder {
+  /** MindMap использует собственные теги вместо @startuml */
+  override build(): string {
+    return `@startmindmap\n${this.lines.join("\n")}\n@endmindmap`;
+  }
+
+  /**
+   * Узел карты.
+   * @param level - глубина: 1 = корень, 2 = ветвь, 3 = лист, ...
+   * @param text  - текст узла
+   * @param side  - "right" (по умолчанию) или "left" (ветви идут влево от корня)
+   */
+  node(level: number, text: string, side: "right" | "left" = "right"): this {
+    const stars = "*".repeat(Math.max(1, level));
+    return this.add(side === "left" ? `${stars}_ ${text}` : `${stars} ${text}`);
+  }
+}
+
+// ── Gantt builder ─────────────────────────────────────────────────────────────
+
+export class GanttBuilder extends DiagramBuilder {
+  /** Gantt использует собственные теги вместо @startuml */
+  override build(): string {
+    return `@startgantt\n${this.lines.join("\n")}\n@endgantt`;
+  }
+
+  /** Дата начала проекта в формате YYYY-MM-DD */
+  startDate(date: string): this {
+    return this.add(`Project starts ${date}`);
+  }
+
+  /** Задача с длительностью. startDay: смещение от старта проекта в днях */
+  task(name: string, duration: number, startDay?: number): this {
+    return startDay !== undefined
+      ? this.add(`[${name}] starts D+${startDay} and lasts ${duration} days`)
+      : this.add(`[${name}] lasts ${duration} days`);
+  }
+
+  /** Задача, стартующая сразу после окончания другой */
+  after(name: string, afterName: string, duration: number): this {
+    return this.add(`[${name}] starts at [${afterName}]'s end and lasts ${duration} days`);
+  }
+
+  /** Веха — нулевая длительность в момент окончания задачи */
+  milestone(name: string, afterTask: string): this {
+    return this.add(`[${name}] happens at [${afterTask}]'s end`);
+  }
+
+  /** Раздел / фаза проекта */
+  section(name: string): this {
+    return this.add(`-- ${name} --`);
+  }
+}
+
 // ── Фабрика ───────────────────────────────────────────────────────────────────
 
 export function createPlantUmlGost(opts: PlantUmlGostOptions = {}): PlantUmlGostInstance {
   const defaultDpi = opts.dpi ?? 150;
 
   return {
-    useCaseDiagram:  () => new UseCaseBuilder(),
-    classDiagram:    () => new ClassDiagramBuilder(),
-    sequenceDiagram: () => new SequenceBuilder(),
-    stateDiagram:    () => new StateBuilder(),
+    useCaseDiagram:    () => new UseCaseBuilder(),
+    classDiagram:      () => new ClassDiagramBuilder(),
+    sequenceDiagram:   () => new SequenceBuilder(),
+    stateDiagram:      () => new StateBuilder(),
+    activityDiagram:   () => new ActivityBuilder(),
+    componentDiagram:  () => new ComponentBuilder(),
+    deploymentDiagram: () => new DeploymentBuilder(),
+    objectDiagram:     () => new ObjectBuilder(),
+    erDiagram:         () => new ERBuilder(),
+    timingDiagram:     () => new TimingBuilder(),
+    mindMap:           () => new MindMapBuilder(),
+    ganttChart:        () => new GanttBuilder(),
 
     render: (puml, renderOpts = {}) =>
       renderDiagram(puml, { dpi: defaultDpi, ...renderOpts }),
