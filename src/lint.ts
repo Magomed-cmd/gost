@@ -8,6 +8,7 @@ export type GostElementType =
   | "paragraph" | "centered"
   | "caption" | "tableCaption"
   | "placeholder" | "image" | "codeLine"
+  | "listItem" | "appendixHeading"
   | "table" | "unknown";
 
 export type LintLevel = "warn" | "info";

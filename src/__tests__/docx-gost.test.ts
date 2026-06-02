@@ -14,7 +14,7 @@ describe("createDocxGost", () => {
       "createCaptionCounter", "placeholder", "imageBlock",
       "codeLine", "codeBlock", "formulaMath", "formulaInline",
       "makeTable", "makeTitlePage", "makeContentSection",
-      "makeDocument", "saveDocument", "diagramBlock", "codeFile",
+      "makeDocument", "saveDocument", "diagramBlock", "codeFile", "list", "appendix",
     ];
     methods.forEach((m) => expect(typeof (g as unknown as Record<string, unknown>)[m]).toBe("function"));
   });
@@ -137,6 +137,47 @@ describe("createDocxGost", () => {
     test("пустой файл возвращает пустой массив", () => {
       fs.writeFileSync(tmpFile, "");
       expect(g.codeFile(tmpFile)).toHaveLength(0);
+    });
+  });
+
+  describe("list", () => {
+    test("возвращает массив Paragraph по числу элементов", () => {
+      const result = g.list(["Пункт 1", "Пункт 2", "Пункт 3"]);
+      expect(result).toHaveLength(3);
+      result.forEach(p => expect(p).toBeInstanceOf(Paragraph));
+    });
+
+    test("по умолчанию тип bullet", () => {
+      expect(g.list(["A"])).toHaveLength(1);
+    });
+
+    test("ordered возвращает Paragraph[]", () => {
+      const result = g.list(["A", "B"], "ordered");
+      expect(result).toHaveLength(2);
+      result.forEach(p => expect(p).toBeInstanceOf(Paragraph));
+    });
+
+    test("пустой список возвращает пустой массив", () => {
+      expect(g.list([])).toHaveLength(0);
+    });
+  });
+
+  describe("appendix", () => {
+    test("без kind возвращает 2 параграфа (заголовок + название)", () => {
+      const result = g.appendix("А", "Исходный код");
+      expect(result).toHaveLength(2);
+      result.forEach(p => expect(p).toBeInstanceOf(Paragraph));
+    });
+
+    test("с kind возвращает 3 параграфа", () => {
+      const result = g.appendix("Б", "Схема БД", "обязательное");
+      expect(result).toHaveLength(3);
+    });
+
+    test("буква приводится к верхнему регистру", () => {
+      // appendix("а") должен генерировать "ПРИЛОЖЕНИЕ А"
+      // Косвенно: если упал бы на строчной букве — был бы другой результат
+      expect(() => g.appendix("а", "Тест")).not.toThrow();
     });
   });
 

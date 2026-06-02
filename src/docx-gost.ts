@@ -9,6 +9,7 @@ import {
   Footer,
   HeadingLevel,
   ImageRun,
+  LevelFormat,
   Math as DocxMath,
   MathCurlyBrackets,
   MathFraction,
@@ -201,6 +202,16 @@ export interface DocxGostInstance {
    * Paragraph в стиле кода. Эквивалентно codeBlock(readFileSync(p).split('\n')).
    */
   codeFile(filePath: string, opts?: ParagraphOpts): Paragraph[];
+  /**
+   * Нумерованный (ordered) или маркированный (bullet, тире –) список по ГОСТ.
+   * Спредится в children: `...g.list(["Пункт 1", "Пункт 2"])`.
+   */
+  list(items: string[], type?: ListType, opts?: ParagraphOpts): Paragraph[];
+  /**
+   * Заголовок приложения по ГОСТ: «ПРИЛОЖЕНИЕ А» + опциональный тип + название.
+   * Heading 1 — попадает в оглавление. Спредится в children: `...g.appendix("А", "Код")`.
+   */
+  appendix(letter: string, title: string, kind?: "обязательное" | "справочное"): Paragraph[];
   formulaMath(content: unknown, opts?: ParagraphOpts): Paragraph;
   formulaInline(label: string, mathContent: unknown, opts?: ParagraphOpts): Paragraph;
   makeTable(rows: CellValue[][], opts?: TableOpts): Table;
@@ -229,6 +240,9 @@ export interface ImageBlockOpts extends ParagraphOpts {
    */
   maxWidth?: number;
 }
+
+/** Тип списка: нумерованный или маркированный (тире по ГОСТ) */
+export type ListType = "ordered" | "bullet";
 
 export interface DiagramBlockOpts {
   /** DPI растеризации. По умолчанию: 150, для печати: 300 */
@@ -786,10 +800,85 @@ function makeContentSectionImpl(st: DocxStyleConfig, children: Array<Paragraph |
   return { properties: { page: st.PAGE }, footers: { default: makeFooterPageNumImpl(st) }, children };
 }
 
+/** Нумерация для list() — всегда включается в makeDocument */
+function defaultNumbering(st: DocxStyleConfig) {
+  const indent = { left: st.INDENT + 360, hanging: st.INDENT };
+  return {
+    config: [
+      {
+        reference: "gost-ordered",
+        levels: [{
+          level: 0,
+          format: LevelFormat.DECIMAL,
+          text: "%1.",
+          alignment: AlignmentType.START,
+          style: {
+            run: { font: st.FONT, size: st.SIZE },
+            paragraph: { indent },
+          },
+        }],
+      },
+      {
+        reference: "gost-bullet",
+        levels: [{
+          level: 0,
+          format: LevelFormat.BULLET,
+          text: "–",
+          alignment: AlignmentType.START,
+          style: {
+            run: { font: st.FONT, size: st.SIZE },
+            paragraph: { indent },
+          },
+        }],
+      },
+    ],
+  };
+}
+
+function listImpl(st: DocxStyleConfig, items: string[], type: ListType, opts: ParagraphOpts = {}): Paragraph[] {
+  const ref = type === "ordered" ? "gost-ordered" : "gost-bullet";
+  return items.map((text) =>
+    tagElement(new Paragraph({
+      spacing: { line: opts.line ?? st.LINE, before: 0, after: 0 },
+      numbering: { reference: ref, level: 0 },
+      children: [runImpl(st, text, opts)],
+    }), "listItem")
+  );
+}
+
+/**
+ * Заголовок приложения по ГОСТ 7.32.
+ * Возвращает массив параграфов: «ПРИЛОЖЕНИЕ А», опциональный тип и название.
+ * @param letter - буква приложения: "А", "Б", ...
+ * @param title  - название приложения
+ * @param kind   - "(обязательное)" или "(справочное)"
+ */
+function appendixImpl(
+  st: DocxStyleConfig,
+  letter: string,
+  title: string,
+  kind?: "обязательное" | "справочное",
+): Paragraph[] {
+  const heading = tagElement(new Paragraph({
+    ...paragraphOptions(st, { align: AlignmentType.CENTER, noIndent: true, before: 240, after: 60, keepNext: true }, [
+      runImpl(st, `ПРИЛОЖЕНИЕ ${letter.toUpperCase()}`, { bold: true, color: st.HEADING_COLOR }),
+    ]),
+    heading: HeadingLevel.HEADING_1,
+  }), "appendixHeading");
+
+  const result: Paragraph[] = [heading];
+  if (kind) {
+    result.push(centeredImpl(st, `(${kind})`, { italics: true, before: 0, after: 60 }));
+  }
+  result.push(centeredImpl(st, title, { bold: true, before: 0, after: 120 }));
+  return result;
+}
+
 function makeDocumentImpl(st: DocxStyleConfig, sections: DocxSection[], opts: { styles?: object } = {}): Document {
   return new Document({
     settings: { updateFields: true },
     styles: opts.styles ?? defaultStyles(st),
+    numbering: defaultNumbering(st),
     sections,
   } as ConstructorParameters<typeof Document>[0]);
 }
@@ -844,6 +933,8 @@ export function createDocxGost(factoryOpts: DocxGostOptions = {}): DocxGostInsta
     codeLine: (text, opts = {}) => codeLineImpl(st, text, opts),
     codeBlock: (lines, opts = {}) => lines.map((line) => codeLineImpl(st, line, opts)),
     codeFile: (filePath, opts = {}) => codeFileImpl(st, filePath, opts),
+    list: (items, type = "bullet", opts = {}) => listImpl(st, items, type, opts),
+    appendix: (letter, title, kind) => appendixImpl(st, letter, title, kind),
     formulaMath: (content, opts = {}) => formulaMathImpl(st, content, opts),
     formulaInline: (label, math, opts = {}) => formulaInlineImpl(st, label, math, opts),
     makeTable: (rows, opts = {}) => makeTableImpl(st, rows, opts),
