@@ -397,11 +397,22 @@ export class DeploymentBuilder extends DiagramBuilder {
 // ── Object builder ────────────────────────────────────────────────────────────
 
 export class ObjectBuilder extends DiagramBuilder {
-  /** Объект-экземпляр с необязательными полями key = value */
-  object(name: string, fields: Record<string, string | number> = {}): this {
+  /**
+   * Объект-экземпляр.
+   * @param name   - идентификатор (используется в link/arrow). Если содержит
+   *                 пробелы или двоеточие — автоматически оборачивается в кавычки,
+   *                 а для связей нужно передать alias.
+   * @param alias  - короткий идентификатор для link/arrow когда name содержит спецсимволы
+   * @param fields - поля в формате { key: value }
+   */
+  object(name: string, alias?: string, fields: Record<string, string | number> = {}): this {
     const entries = Object.entries(fields);
-    if (entries.length === 0) return this.add(`object ${name}`);
-    this.add(`object ${name} {`);
+    const needsQuotes = /[^a-zA-Z0-9_]/.test(name);
+    const decl = needsQuotes
+      ? `object "${name}"${alias ? ` as ${alias}` : ""}`
+      : `object ${name}`;
+    if (entries.length === 0) return this.add(decl);
+    this.add(`${decl} {`);
     entries.forEach(([k, v]) => this.add(`  ${k} = ${v}`));
     return this.add("}");
   }
@@ -415,27 +426,33 @@ export class ObjectBuilder extends DiagramBuilder {
 // ── ER builder ────────────────────────────────────────────────────────────────
 
 /**
- * Готовые константы кардинальности для ER-диаграмм PlantUML.
- * Используй как fromCard / toCard в ERBuilder.relation().
- * @example er.relation("User", ER.ONE_ONLY, ER.ZERO_OR_MANY, "Order", "places")
+ * Готовые строки связей для ER-диаграмм PlantUML.
+ * Используй как второй аргумент ERBuilder.relation().
+ *
+ * В PlantUML нотация кардинальности зеркальна:
+ *   левая сторона (--): `||`, `|o`, `}|`, `}o`
+ *   правая сторона (--): `||`, `o|`, `|{`, `o{`
+ * Константы ниже — готовые комбинации, которые всегда корректны.
+ *
+ * @example er.relation("User", ER.ONE_TO_MANY, "Order", "делает")
  */
 export const ER = {
-  /** Ровно один  | */
-  ONE:          "|",
-  /** Только один ||  */
-  ONE_ONLY:     "||",
-  /** Ноль или один |o */
-  ZERO_OR_ONE:  "|o",
-  /** Один или много }| */
-  ONE_OR_MANY:  "}|",
-  /** Ноль или много }o */
-  ZERO_OR_MANY: "}o",
+  /** || -- ||  один к одному */
+  ONE_TO_ONE:        "||--||",
+  /** || -- o{  один к нулю-или-многим (самый частый) */
+  ONE_TO_MANY:       "||--o{",
+  /** || -- |{  один к одному-или-многим */
+  ONE_TO_MANY_REQ:   "||--|{",
+  /** |o -- o{  ноль-или-один к нулю-или-многим */
+  OPT_TO_MANY:       "|o--o{",
+  /** }o -- o{  многие ко многим */
+  MANY_TO_MANY:      "}o--o{",
 } as const;
 
 export class ERBuilder extends DiagramBuilder {
   /**
    * Объявить сущность.
-   * @param pkFields - поля первичного ключа (отделяются чертой от обычных полей)
+   * @param pkFields - поля первичного ключа (выделяются * и отделяются чертой)
    * @param fields   - обычные поля
    */
   entity(name: string, pkFields: string[], fields: string[] = []): this {
@@ -447,14 +464,14 @@ export class ERBuilder extends DiagramBuilder {
   }
 
   /**
-   * Связь между сущностями с кардинальностью.
-   * @param fromCard - кардинальность со стороны from (используй константы ER.*)
-   * @param toCard   - кардинальность со стороны to
+   * Связь между сущностями.
+   * @param rel - строка кардинальности, используй константы ER.* или свою строку
+   * @example er.relation("User", ER.ONE_TO_MANY, "Order", "делает")
    */
-  relation(from: string, fromCard: string, toCard: string, to: string, label?: string): this {
+  relation(from: string, rel: string, to: string, label?: string): this {
     return this.add(label
-      ? `${from} ${fromCard}--${toCard} ${to} : ${label}`
-      : `${from} ${fromCard}--${toCard} ${to}`
+      ? `${from} ${rel} ${to} : ${label}`
+      : `${from} ${rel} ${to}`
     );
   }
 }
@@ -492,11 +509,14 @@ export class TimingBuilder extends DiagramBuilder {
     return this.add(`${from} -> ${to} : ${label}`);
   }
 
-  /** Выделить временной отрезок цветом */
-  highlight(fromTime: number, toTime: number, label?: string): this {
+  /**
+   * Выделить временной отрезок цветом (поддерживается в PlantUML 1.2021+).
+   * Синтаксис: highlight start to end #Color : label
+   */
+  highlight(fromTime: number, toTime: number, color = "#LightYellow", label?: string): this {
     return this.add(label
-      ? `highlight ${fromTime} to ${toTime} : ${label}`
-      : `highlight ${fromTime} to ${toTime}`
+      ? `highlight ${fromTime} to ${toTime} ${color} : ${label}`
+      : `highlight ${fromTime} to ${toTime} ${color}`
     );
   }
 }
@@ -534,11 +554,9 @@ export class GanttBuilder extends DiagramBuilder {
     return this.add(`Project starts ${date}`);
   }
 
-  /** Задача с длительностью. startDay: смещение от старта проекта в днях */
-  task(name: string, duration: number, startDay?: number): this {
-    return startDay !== undefined
-      ? this.add(`[${name}] starts D+${startDay} and lasts ${duration} days`)
-      : this.add(`[${name}] lasts ${duration} days`);
+  /** Задача с длительностью в днях. Начинается сразу после предыдущей */
+  task(name: string, duration: number): this {
+    return this.add(`[${name}] lasts ${duration} days`);
   }
 
   /** Задача, стартующая сразу после окончания другой */

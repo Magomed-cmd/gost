@@ -360,18 +360,25 @@ describe("DeploymentBuilder", () => {
 // ── ObjectBuilder ──────────────────────────────────────────────────────────────
 
 describe("ObjectBuilder", () => {
-  test("object() без полей", () => {
+  test("object() без полей — простое имя", () => {
     const puml = new ObjectBuilder().object("tram1").build();
     expect(puml).toContain("object tram1");
   });
 
   test("object() с полями", () => {
     const puml = new ObjectBuilder()
-      .object("tram1", { id: 1, state: '"working"' })
+      .object("tram1", undefined, { id: 1, state: '"working"' })
       .build();
     expect(puml).toContain("object tram1 {");
     expect(puml).toContain("id = 1");
     expect(puml).toContain('state = "working"');
+  });
+
+  test("object() с именем содержащим двоеточие — автоматически кавычки + alias", () => {
+    const puml = new ObjectBuilder()
+      .object("tram1 : Tram", "tram1")
+      .build();
+    expect(puml).toContain('object "tram1 : Tram" as tram1');
   });
 
   test("link() со стрелкой", () => {
@@ -401,17 +408,24 @@ describe("ERBuilder", () => {
 
   test("relation() с константами ER.*", () => {
     const puml = new ERBuilder()
-      .relation("User", ER.ONE_ONLY, ER.ZERO_OR_MANY, "Order", "places")
+      .relation("User", ER.ONE_TO_MANY, "Order", "places")
       .build();
-    expect(puml).toContain(`User ||--}o Order : places`);
+    expect(puml).toContain("User ||--o{ Order : places");
   });
 
-  test("ER константы имеют правильные значения", () => {
-    expect(ER.ONE).toBe("|");
-    expect(ER.ONE_ONLY).toBe("||");
-    expect(ER.ZERO_OR_ONE).toBe("|o");
-    expect(ER.ONE_OR_MANY).toBe("}|");
-    expect(ER.ZERO_OR_MANY).toBe("}o");
+  test("relation() без label", () => {
+    const puml = new ERBuilder()
+      .relation("A", ER.MANY_TO_MANY, "B")
+      .build();
+    expect(puml).toContain("A }o--o{ B");
+  });
+
+  test("ER константы — корректный PlantUML синтаксис", () => {
+    expect(ER.ONE_TO_ONE).toBe("||--||");
+    expect(ER.ONE_TO_MANY).toBe("||--o{");
+    expect(ER.ONE_TO_MANY_REQ).toBe("||--|{");
+    expect(ER.OPT_TO_MANY).toBe("|o--o{");
+    expect(ER.MANY_TO_MANY).toBe("}o--o{");
   });
 });
 
@@ -442,9 +456,14 @@ describe("TimingBuilder", () => {
     expect(puml).toContain("U -> S : запрос");
   });
 
-  test("highlight() с label", () => {
-    const puml = new TimingBuilder().highlight(0, 100, "фаза 1").build();
-    expect(puml).toContain("highlight 0 to 100 : фаза 1");
+  test("highlight() с label и цветом", () => {
+    const puml = new TimingBuilder().highlight(0, 100, "#Gold", "фаза 1").build();
+    expect(puml).toContain("highlight 0 to 100 #Gold : фаза 1");
+  });
+
+  test("highlight() без label", () => {
+    const puml = new TimingBuilder().highlight(0, 100).build();
+    expect(puml).toContain("highlight 0 to 100 #LightYellow");
   });
 
   test("clock() добавляет тактовый сигнал", () => {
@@ -495,11 +514,6 @@ describe("GanttBuilder", () => {
   test("task() без startDay", () => {
     const puml = new GanttBuilder().task("Разработка", 10).build();
     expect(puml).toContain("[Разработка] lasts 10 days");
-  });
-
-  test("task() с startDay", () => {
-    const puml = new GanttBuilder().task("Тестирование", 5, 10).build();
-    expect(puml).toContain("[Тестирование] starts D+10 and lasts 5 days");
   });
 
   test("after() связывает задачи последовательно", () => {
