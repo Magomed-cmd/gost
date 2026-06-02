@@ -3,3 +3,4 @@ node_modules/
 *.tsbuildinfo
 .DS_Store
 examples/out/
+.DS_Store
